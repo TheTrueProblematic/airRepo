@@ -76,26 +76,70 @@ TEST_MATRIX = [
     ("N91GF", "United States", False, "US Prefix"),
     ("737AA", "United States", False, "US Numeric/Missing N"),
     ("N12345", "United States", False, "US Standard"),
-    
+    ("N183SD", "United States", False, "US Extended N183SD"),
+    ("N184SD", "United States", False, "US Extended N184SD"),
+    ("N185SD", "United States", False, "US Extended N185SD"),
+    ("N188Q", "United States", False, "US Extended N188Q"),
+    ("N188SS", "United States", False, "US Extended N188SS"),
+    ("N189JC", "United States", False, "US Extended N189JC"),
+    ("N18SP", "United States", False, "US Extended N18SP"),
+    ("N191NR", "United States", False, "US Extended N191NR"),
+    ("N193GM", "United States", False, "US Extended N193GM"),
+    ("N196TT", "United States", False, "US Extended N196TT"),
+    ("N1SP", "United States", False, "US Extended N1SP"),
+    ("N201SP", "United States", False, "US Extended N201SP"),
+    ("N202HP", "United States", False, "US Extended N202HP"),
+    ("N203Z", "United States", False, "US Extended N203Z"),
+    ("N204TM", "United States", False, "US Extended N204TM"),
+    ("N206AM", "United States", False, "US Extended N206AM"),
+    ("N206LQ", "United States", False, "US Extended N206LQ"),
+    ("N206LW", "United States", False, "US Extended N206LW"),
+    ("N206VC", "United States", False, "US Extended N206VC"),
+    ("N208CN", "United States", False, "US Extended N208CN"),
+    ("N208EB", "United States", False, "US Extended N208EB"),
+    ("N2092S", "United States", False, "US Extended N2092S"),
+
     # Canada Tail Variations
     ("C-GMJF", "Canada", False, "Canada Dash"),
     ("CFZRR", "Canada", False, "Canada Non-Dash Standard"),
     ("CGMJF", "Canada", False, "Canada Short Non-Dash"),
-    
+    ("C-FMPP", "Canada", False, "Canada Dash C-FMPP"),
+    ("C-FNTP", "Canada", False, "Canada Dash C-FNTP"),
+    ("C-FOPP", "Canada", False, "Canada Dash C-FOPP"),
+    ("C-FOPS", "Canada", False, "Canada Dash C-FOPS"),
+    ("C-FRPH", "Canada", False, "Canada Dash C-FRPH"),
+    ("C-FTWR", "Canada", False, "Canada Dash C-FTWR"),
+    ("C-FZRR", "Canada", False, "Canada Dash C-FZRR"),
+    ("C-GMPW", "Canada", False, "Canada Dash C-GMPW"),
+    ("C-GMXM", "Canada", False, "Canada Dash C-GMXM"),
+    ("C-GPKR", "Canada", False, "Canada Dash C-GPKR"),
+    ("C-GRPF", "Canada", False, "Canada Dash C-GRPF"),
+    ("C-GSQY", "Canada", False, "Canada Dash C-GSQY"),
+    ("C-NFTP", "Canada", False, "Canada Dash C-NFTP"),
+    ("CFCPS", "Canada", False, "Canada Non-Dash CFCPS"),
+    ("CFIVO", "Canada", False, "Canada Non-Dash CFIVO"),
+
     # UK Tail Variations (Dynamic Scraper / Cache check)
     ("G-INFO", "United Kingdom", False, "UK Dash Standard"),
     ("GINFO", "United Kingdom", False, "UK Non-Dash"),
-    
+
     # Other Supported Registries
     ("VH-OJA", "Australia", False, "Australia Dash"),
+    ("VH-5QP", "Australia", False, "Australia Dash VH-5QP"),
+    ("VH-6QP", "Australia", False, "Australia Dash VH-6QP"),
+    ("VH-85T", "Australia", False, "Australia Dash VH-85T"),
     ("ZK-PQR", "New Zealand", False, "New Zealand Dash"),
     ("PP-XYZ", "Brazil", False, "Brazil Standard"),
     ("EI-LBS", "Ireland", False, "Ireland Excel Ingestion"),
-    
+
     # Unsupported Registries (Should gracefully classify and log exception)
     ("D-ATRA", "Germany", True, "Unsupported Region (Germany)"),
+    ("D-IAMT", "Germany", True, "Unsupported Region (Germany D-IAMT)"),
+    ("D-IBMT", "Germany", True, "Unsupported Region (Germany D-IBMT)"),
     ("B-1234", "China / Taiwan", True, "Unsupported Region (China)"),
-    ("JA801A", "Japan", True, "Unsupported Region (Japan)")
+    ("JA801A", "Japan", True, "Unsupported Region (Japan)"),
+    ("CC-DJB", "Chile", True, "Unsupported Region (Chile)"),
+    ("RW-SIL", "Unknown", True, "Unsupported Region (RW prefix)"),
 ]
 
 

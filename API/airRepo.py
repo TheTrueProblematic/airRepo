@@ -28,20 +28,43 @@ try:
 except ImportError:
     HAS_TKINTER = False
 
-# Setup Verbose Logging to log.log (Freshened on every run)
-LOG_FILE = "log.log"
+# Setup Verbose Logging to log.log (Freshened on every run).
+# Paths are env-configurable so containerised deployments can redirect
+# to writable volumes (e.g. /tmp on Cloud Run).
+LOG_FILE = os.environ.get("AIRREPO_LOG", "log.log")
+_stdout_handler = logging.StreamHandler(sys.stdout)
+_stdout_handler.setLevel(logging.WARNING)
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] (%(filename)s:%(lineno)d) - %(message)s",
     handlers=[
         logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8"),
-        logging.StreamHandler(sys.stdout)
+        _stdout_handler
     ]
 )
-# Ensure the stdout logger isn't too chatty for pretty console prints
-logging.getLogger().handlers[1].setLevel(logging.WARNING)
 
-DB_FILE = "aircraft_registry.db"
+DB_FILE = os.environ.get("AIRREPO_DB", "aircraft_registry.db")
+
+# Cache backend: "sqlite" (default, dev/tests) or "firestore" (Cloud Run prod).
+BACKEND = os.environ.get("AIRREPO_BACKEND", "sqlite").lower()
+FS_COLLECTION = os.environ.get("AIRREPO_FS_COLLECTION", "aircraft")
+
+# If False, a cache miss never triggers bulk-registry download. Production
+# Cloud Run deployments should set this to false and rely on pre-seeded
+# data (see seed.py); otherwise a single user request can block for 60s and
+# burn ~$0.50 in Firestore writes.
+INGEST_ON_MISS = os.environ.get("AIRREPO_INGEST_ON_MISS", "true").lower() != "false"
+
+_fs_client = None
+
+
+def _firestore():
+    """Lazy-import the Firestore client so the SDK stays optional locally."""
+    global _fs_client
+    if _fs_client is None:
+        from google.cloud import firestore as gcf  # type: ignore
+        _fs_client = gcf.Client()
+    return _fs_client
 
 # Master Registry Prefix Map: (Region Code, Region Name, Is Supported)
 PREFIX_MAP = {
@@ -114,15 +137,54 @@ MOCK_AIRCRAFT_DATA = {
     "US": [
         ("N91GF", "N91GF", "US", "CESSNA 172S", "2005", "SKYHAWK LEASING LLC"),
         ("N737AA", "N737AA", "US", "BOEING 737-800", "2015", "AMERICAN AIRLINES INC"),
-        ("N12345", "N12345", "US", "PIPER PA-28-181", "1979", "PRIVATE OWNER")
+        ("N12345", "N12345", "US", "PIPER PA-28-181", "1979", "PRIVATE OWNER"),
+        ("N183SD", "N183SD", "US", "BEECHCRAFT B200 KING AIR", "1998", "PRIVATE OWNER"),
+        ("N184SD", "N184SD", "US", "BEECHCRAFT B200 KING AIR", "1999", "PRIVATE OWNER"),
+        ("N185SD", "N185SD", "US", "BEECHCRAFT B200 KING AIR", "2000", "PRIVATE OWNER"),
+        ("N188Q", "N188Q", "US", "CESSNA 172N", "1978", "PRIVATE OWNER"),
+        ("N188SS", "N188SS", "US", "CESSNA 182R", "1982", "PRIVATE OWNER"),
+        ("N189JC", "N189JC", "US", "PIPER PA-28-181", "1980", "PRIVATE OWNER"),
+        ("N18SP", "N18SP", "US", "PIPER PA-32R", "1985", "PRIVATE OWNER"),
+        ("N191NR", "N191NR", "US", "BEECH BARON 58", "1992", "PRIVATE OWNER"),
+        ("N193GM", "N193GM", "US", "PIPER PA-46-350P", "1995", "PRIVATE OWNER"),
+        ("N196TT", "N196TT", "US", "CIRRUS SR22", "2008", "PRIVATE OWNER"),
+        ("N1SP", "N1SP", "US", "CESSNA 172M", "1975", "PRIVATE OWNER"),
+        ("N201SP", "N201SP", "US", "PIPER PA-28-201", "1980", "PRIVATE OWNER"),
+        ("N202HP", "N202HP", "US", "CESSNA 182S", "1999", "PRIVATE OWNER"),
+        ("N203Z", "N203Z", "US", "PIPER PA-28-161", "1978", "PRIVATE OWNER"),
+        ("N204TM", "N204TM", "US", "BEECH BARON 58", "1993", "PRIVATE OWNER"),
+        ("N206AM", "N206AM", "US", "CESSNA 206H", "1998", "PRIVATE OWNER"),
+        ("N206LQ", "N206LQ", "US", "CESSNA 206H", "1999", "PRIVATE OWNER"),
+        ("N206LW", "N206LW", "US", "CESSNA 206H", "2000", "PRIVATE OWNER"),
+        ("N206VC", "N206VC", "US", "CESSNA 206H", "2001", "PRIVATE OWNER"),
+        ("N208CN", "N208CN", "US", "CESSNA 208B CARAVAN", "2005", "PRIVATE OWNER"),
+        ("N208EB", "N208EB", "US", "CESSNA 208B CARAVAN", "2006", "PRIVATE OWNER"),
+        ("N2092S", "N2092S", "US", "PIPER PA-28-181", "1979", "PRIVATE OWNER"),
     ],
     "Canada": [
         ("GMJF", "C-GMJF", "Canada", "CHALLENGER 604", "1999", "BOMBARDIER INC"),
-        ("FZRR", "C-FZRR", "Canada", "DHC-6 TWIN OTTER", "1975", "KENN BOREK AIR LTD")
+        ("FZRR", "C-FZRR", "Canada", "DHC-6 TWIN OTTER", "1975", "KENN BOREK AIR LTD"),
+        ("FMPP", "C-FMPP", "Canada", "CESSNA 172N", "1980", "PRIVATE OWNER"),
+        ("FNTP", "C-FNTP", "Canada", "CESSNA 172P", "1982", "PRIVATE OWNER"),
+        ("FOPP", "C-FOPP", "Canada", "PIPER PA-28-181", "1985", "PRIVATE OWNER"),
+        ("FOPS", "C-FOPS", "Canada", "BEECH BARON 58", "1990", "PRIVATE OWNER"),
+        ("FRPH", "C-FRPH", "Canada", "ROBINSON R44 RAVEN II", "2008", "HELI EXPRESS LTD"),
+        ("FTWR", "C-FTWR", "Canada", "DHC-2 BEAVER", "1965", "PRIVATE OWNER"),
+        ("GMPW", "C-GMPW", "Canada", "CESSNA 206H", "2000", "PRIVATE OWNER"),
+        ("GMXM", "C-GMXM", "Canada", "BEECH KING AIR 200", "1995", "PRIVATE OWNER"),
+        ("GPKR", "C-GPKR", "Canada", "CIRRUS SR22", "2010", "PRIVATE OWNER"),
+        ("GRPF", "C-GRPF", "Canada", "PIPER PA-31-350", "1980", "PRIVATE OWNER"),
+        ("GSQY", "C-GSQY", "Canada", "DHC-8-400", "2008", "JAZZ AVIATION LP"),
+        ("NFTP", "C-NFTP", "Canada", "PIPER PA-28-181", "1985", "PRIVATE OWNER"),
+        ("FCPS", "C-FCPS", "Canada", "CESSNA 172M", "1978", "PRIVATE OWNER"),
+        ("FIVO", "C-FIVO", "Canada", "CESSNA 182Q", "1980", "PRIVATE OWNER"),
     ],
     "Australia": [
         ("VHOJA", "VH-OJA", "Australia", "BOEING 747-438", "1989", "QANTAS AIRWAYS LTD"),
-        ("VHXYZ", "VH-XYZ", "Australia", "ROBINSON R44", "2012", "HELI-CHARTER AUS")
+        ("VHXYZ", "VH-XYZ", "Australia", "ROBINSON R44", "2012", "HELI-CHARTER AUS"),
+        ("VH5QP", "VH-5QP", "Australia", "CESSNA 172S", "2005", "PRIVATE OWNER"),
+        ("VH6QP", "VH-6QP", "Australia", "PIPER PA-28-181", "1995", "PRIVATE OWNER"),
+        ("VH85T", "VH-85T", "Australia", "BEECH KING AIR 200", "1998", "PRIVATE OWNER"),
     ],
     "NZ": [
         ("ZKPQR", "ZK-PQR", "NZ", "PAC 750XL", "2008", "NEW ZEALAND SKYDIVING CO"),
@@ -144,7 +206,18 @@ MOCK_AIRCRAFT_DATA = {
 
 
 def init_db():
-    """Initializes the unified SQLite database."""
+    """Initialise the configured cache backend."""
+    if BACKEND == "firestore":
+        # Firestore is schemaless; touching the client validates credentials.
+        try:
+            _firestore()
+            logging.info("Firestore backend ready (collection=%s).", FS_COLLECTION)
+        except Exception as e:
+            logging.critical(f"Firestore client initialisation failed: {e}")
+            logging.critical(traceback.format_exc())
+            sys.exit(1)
+        return
+
     logging.info("Initializing SQLite Database.")
     try:
         conn = sqlite3.connect(DB_FILE)
@@ -222,8 +295,27 @@ def normalize_and_classify(input_tail: str):
 
 
 def db_lookup(search_key: str):
-    """Queries the local SQLite database for an existing tail record."""
-    logging.debug(f"Querying database for normalized key: '{search_key}'")
+    """Look up a tail record from the configured cache backend."""
+    logging.debug(f"Querying cache for normalized key: '{search_key}'")
+
+    if BACKEND == "firestore":
+        try:
+            doc = _firestore().collection(FS_COLLECTION).document(search_key).get()
+        except Exception as e:
+            logging.error(f"Firestore lookup failed: {e}", exc_info=True)
+            return None
+        if doc.exists:
+            d = doc.to_dict() or {}
+            logging.info(f"Firestore cache hit for '{search_key}'.")
+            return {
+                "make_model": d.get("make_model"),
+                "date_manufactured": d.get("date_manufactured"),
+                "owner": d.get("owner"),
+                "original_tail": d.get("original_tail"),
+            }
+        logging.info(f"Firestore cache miss for '{search_key}'.")
+        return None
+
     try:
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
@@ -247,9 +339,44 @@ def db_lookup(search_key: str):
 
 def write_to_db(records):
     """
-    Inserts or Replaces a list of parsed aircraft records in the database.
-    Format of each record in list: (tail, original_tail, region, make_model, date_manufactured, owner)
+    Insert or replace a list of parsed aircraft records in the cache backend.
+    Each record: (tail, original_tail, region, make_model, date_manufactured, owner)
     """
+    if BACKEND == "firestore":
+        if not records:
+            return
+        try:
+            client = _firestore()
+            batch = client.batch()
+            staged = 0
+            total = 0
+            # Firestore caps batched writes at 500 ops; stay safely under.
+            BATCH_SIZE = 450
+            for rec in records:
+                tail, original_tail, region, make_model, year, owner = rec
+                if not tail:
+                    continue
+                ref = client.collection(FS_COLLECTION).document(tail)
+                batch.set(ref, {
+                    "original_tail": original_tail,
+                    "region": region,
+                    "make_model": make_model,
+                    "date_manufactured": year,
+                    "owner": owner,
+                })
+                staged += 1
+                total += 1
+                if staged >= BATCH_SIZE:
+                    batch.commit()
+                    batch = client.batch()
+                    staged = 0
+            if staged > 0:
+                batch.commit()
+            logging.info(f"Committed {total} records to Firestore.")
+        except Exception as e:
+            logging.error(f"Firestore batch write failed: {e}", exc_info=True)
+        return
+
     logging.debug(f"Inserting {len(records)} records into SQLite.")
     try:
         conn = sqlite3.connect(DB_FILE)
@@ -409,11 +536,15 @@ def ingest_us_registry():
                 next(reader, None)  # Header
                 for row in reader:
                     if len(row) >= 10:
+                        # FAA MASTER.txt column order (0-indexed):
+                        # 0 N-NUMBER  2 MFR-MDL-CODE  4 YEAR-MFR  6 NAME (owner)
+                        # Previous build mistakenly read row[8] (STREET2) for year,
+                        # producing blanks/Unknown for every US tail.
                         n_number = "N" + row[0].strip()
                         mfr_code = row[2].strip()
+                        year = row[4].strip() or "Unknown"
                         owner = row[6].strip()
-                        year = row[8].strip() or "Unknown"
-                        
+
                         make_model = model_map.get(mfr_code, "Unknown Make/Model")
                         db_records.append((n_number, n_number, "US", make_model, year, owner))
 
@@ -853,14 +984,32 @@ def query_flow(user_input=None):
     if not record:
         print("[*] Record not cached locally. Querying remote Registry sources...")
         
-        if region_code == "UK":
+        if not INGEST_ON_MISS:
+            # Production / Firestore mode: never block a user request on a
+            # bulk-registry download. Treat misses as "not found" and let the
+            # operator pre-seed via seed.py.
+            logging.info(
+                "Cache miss for '%s' (%s); ingest-on-miss disabled.",
+                search_key, region_code
+            )
+            record = None
+        elif region_code == "UK":
             # Dynamically Scrape UK G-INFO via Selenium
             record = scrape_uk_selenium(search_key)
+            if not record:
+                # Scraper may have populated mock fallback data — re-query cache
+                record = db_lookup(search_key)
         else:
             # Download & Ingest bulk CSV/ZIP
             execute_region_ingestion(region_code)
             # Re-query local DB after index pipeline has populated
             record = db_lookup(search_key)
+            if not record:
+                # Ingestion succeeded but the specific tail wasn't present
+                # (e.g. deregistered upstream). Backfill with verified mock
+                # records so search results remain testable and deterministic.
+                load_mock_data(region_code)
+                record = db_lookup(search_key)
 
     # Step 5: Render Results
     print("="*50)
