@@ -1,0 +1,16 @@
+.gcloudignore
+.git
+.gitignore
+.venv/
+venv/
+*.db
+*.log
+*.zip
+*.csv
+*.xlsx
+temp_faa/
+temp_canada/
+temp_casa/
+__pycache__/
+*.pyc
+*.pyo

@@ -30,6 +30,12 @@ DEFAULT_REGIONS = ["US", "Canada", "Australia", "NZ", "Brazil", "Ireland"]
 
 
 def main():
+    import ssl
+    try:
+        ssl._create_default_https_context = ssl._create_unverified_context
+    except AttributeError:
+        pass
+
     regions = [r.strip() for r in sys.argv[1:]] or DEFAULT_REGIONS
 
     # Force ingestion on, even if env says otherwise — this script's whole

@@ -159,9 +159,9 @@ function ErrorCard({ error, lastQuery }) {
   const code = error.error;
   const heading =
     code === 'not_found' ? 'Off Our Radar' :
-    code === 'unsupported_region' ? 'Outside Our Coverage' :
-    code === 'network_error' ? 'No Signal' :
-    'Squawk 7700';
+      code === 'unsupported_region' ? 'Outside Our Coverage' :
+        code === 'network_error' ? 'No Signal' :
+          'Squawk 7700';
 
   const tone = code === 'unsupported_region' ? 'amber' : 'rose';
   const border = tone === 'amber'
@@ -199,6 +199,24 @@ function EmptyState() {
 }
 
 export default function App() {
+  const randomExamples = useMemo(() => {
+    const REGION_EXAMPLES = {
+      'US': ['N91GF', 'N737AA', 'N12345', 'N183SD', 'N188Q', 'N196TT'],
+      'Canada': ['C-GMJF', 'C-FZRR', 'C-FMPP', 'C-FNTP', 'C-GSQY'],
+      'Australia': ['VH-OJA', 'VH-XYZ', 'VH-5QP', 'VH-6QP', 'VH-85T'],
+      'NZ': ['ZK-PQR', 'ZK-ABC'],
+      'Brazil': ['PP-XYZ', 'PT-ABC'],
+      'Ireland': ['EI-LBS', 'EJ-XYZ'],
+      'UK': ['G-INFO', 'G-ABCD']
+    };
+    const regions = Object.keys(REGION_EXAMPLES);
+    const shuffled = [...regions].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, 4).map(region => {
+      const list = REGION_EXAMPLES[region];
+      return list[Math.floor(Math.random() * list.length)];
+    });
+  }, []);
+
   const [tail, setTail] = useState('');
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -230,7 +248,7 @@ export default function App() {
   // "/" focuses the input from anywhere on the page.
   useEffect(() => {
     const onKey = e => {
-      if (e.key === '/' && document.activeElement !== inputRef.current) {
+      if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
         e.preventDefault();
         inputRef.current?.focus();
       }
@@ -346,7 +364,7 @@ export default function App() {
                   {TOWER_LINES[towerIdx]}
                 </span>
               ) : (
-                <>Try a US, Canadian, Australian, NZ, UK, Brazilian, or Irish tail. <span className="hidden sm:inline">Press <kbd className="rounded border border-white/10 bg-white/5 px-1 font-mono text-[0.65rem] text-slate-300">/</kbd> to focus.</span></>
+                <>Try a US, Canadian, Australian, NZ, UK, Brazilian, or Irish tail.</>
               )}
             </div>
           </div>
@@ -372,7 +390,7 @@ export default function App() {
         {/* Quick-pick chips for one-tap demos / casual exploration */}
         <div className="mt-10 flex flex-wrap items-center justify-center gap-2 text-xs text-slate-400 sm:mt-14">
           <span className="text-slate-500">try:</span>
-          {['N91GF', 'C-GMJF', 'VH-OJA', 'G-INFO'].map(t => (
+          {randomExamples.map(t => (
             <button
               key={t}
               type="button"
