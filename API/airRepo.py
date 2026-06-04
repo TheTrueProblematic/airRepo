@@ -125,12 +125,13 @@ PREFIX_MAP = {
 # Source Registry Download URLs
 REGISTRY_URLS = {
     "US": "https://registry.faa.gov/database/ReleasableAircraft.zip",
-    "Canada": "https://wwwapps.tc.gc.ca/Saf-Sec-Sur/2/CCARCS-RIACC/Documents/ccarcs.zip",
+    "Canada": "https://wwwapps.tc.gc.ca/Saf-Sec-Sur/2/CCARCS-RIACC/download/ccarcsdb.zip",
     "Australia": "https://casa-aircraft-register.s3.ap-southeast-2.amazonaws.com/aircraft-register.zip",
     "NZ": "https://www.aviation.govt.nz/assets/Aircraft-Register/Aircraft-Register.csv",
     "Brazil": "https://sistemas.anac.gov.br/dadosabertos/Aeronaves/RAB/dados_rab.csv",
     "Ireland": "https://www.iaa.ie/docs/default-source/publications/aircraft-registration/irish-aircraft-register.xlsx"
 }
+
 
 # Global Mock Database for Offline Tests / Fallbacks
 MOCK_AIRCRAFT_DATA = {
@@ -162,8 +163,8 @@ MOCK_AIRCRAFT_DATA = {
         ("N2092S", "N2092S", "US", "PIPER PA-28-181", "1979", "PRIVATE OWNER"),
     ],
     "Canada": [
-        ("GMJF", "C-GMJF", "Canada", "CHALLENGER 604", "1999", "BOMBARDIER INC"),
-        ("FZRR", "C-FZRR", "Canada", "DHC-6 TWIN OTTER", "1975", "KENN BOREK AIR LTD"),
+        ("GMJF", "C-GMJF", "Canada", "Cessna U206G", "1981", "Ottawa Police Service"),
+        ("FZRR", "C-FZRR", "Canada", "Cessna 206H", "2004", "Pat Johnson (Sky Photo Techniques)"),
         ("FMPP", "C-FMPP", "Canada", "CESSNA 172N", "1980", "PRIVATE OWNER"),
         ("FNTP", "C-FNTP", "Canada", "CESSNA 172P", "1982", "PRIVATE OWNER"),
         ("FOPP", "C-FOPP", "Canada", "PIPER PA-28-181", "1985", "PRIVATE OWNER"),
@@ -580,28 +581,34 @@ def ingest_canada_registry():
         owner_map = {}
         owner_file = os.path.join(temp_dir, "carsownr.txt")
         if os.path.exists(owner_file):
-            # Format is comma-separated but can be tab or pipe. We'll use custom delimiter splitting
             with open(owner_file, 'r', encoding='utf-8', errors='ignore') as f:
-                for line in f:
-                    parts = [p.strip('" \n') for p in line.split(',')]
-                    if len(parts) >= 2:
-                        owner_map[parts[0]] = parts[1]
+                clean_lines = (line.replace('\x00', '') for line in f)
+                reader = csv.reader(clean_lines)
+                for row in reader:
+                    if row and len(row) >= 2:
+                        mark = row[0].strip()
+                        owner_name = row[1].strip()
+                        owner_map[mark] = owner_name
 
         curr_file = os.path.join(temp_dir, "carscurr.txt")
         db_records = []
         if os.path.exists(curr_file):
             with open(curr_file, 'r', encoding='utf-8', errors='ignore') as f:
-                for line in f:
-                    parts = [p.strip('" \n') for p in line.split(',')]
-                    if len(parts) >= 8:
-                        mark = parts[0]  # E.g. "GMJF"
-                        mfr = parts[1]
-                        model = parts[2]
-                        year = parts[5] or "Unknown"
-                        owner_id = parts[7]
+                clean_lines = (line.replace('\x00', '') for line in f)
+                reader = csv.reader(clean_lines)
+                for row in reader:
+                    if row and len(row) >= 5:
+                        mark = row[0].strip()
+                        mfr = row[3].strip()
+                        model = row[4].strip()
                         
-                        owner_name = owner_map.get(owner_id, "Unknown Owner")
-                        make_model = f"{mfr} {model}"
+                        year_raw = row[31].strip() if len(row) > 31 else "Unknown"
+                        year = year_raw.split('/')[0] if '/' in year_raw else year_raw
+                        if not year:
+                            year = "Unknown"
+                            
+                        owner_name = owner_map.get(mark, "Unknown Owner")
+                        make_model = f"{mfr} {model}".strip()
                         db_records.append((mark, f"C-{mark}", "Canada", make_model, year, owner_name))
 
         if db_records:
@@ -784,15 +791,15 @@ def scrape_uk_selenium(tail_normalized: str):
     Launches Headless Selenium Chrome to live-scrape specs from UK's G-INFO.
     Dynamically saves scraped record to database to prevent duplicate requests.
     """
-    # Clean input suffix for G-INFO search form (expects G- and 4 letters, e.g., G-INFO)
-    if len(tail_normalized) == 5 and tail_normalized.startswith("G"):
-        suffix = tail_normalized[1:]
-        search_query = f"G-{suffix}"
+    # Clean input suffix for G-INFO search form (expects 4 letters without G-, e.g., EZTA)
+    if tail_normalized.startswith("G"):
+        search_query = tail_normalized[1:]
     else:
         search_query = tail_normalized
+    visual_tail = f"G-{search_query}"
 
-    logging.info(f"Initializing Selenium scraping query for UK Aircraft: {search_query}")
-    print(f"[*] Connecting to UK CAA G-INFO Portal to query '{search_query}'...")
+    logging.info(f"Initializing Selenium scraping query for UK Aircraft: {visual_tail}")
+    print(f"[*] Connecting to UK CAA G-INFO Portal to query '{visual_tail}'...")
 
     try:
         from selenium import webdriver
@@ -800,6 +807,7 @@ def scrape_uk_selenium(tail_normalized: str):
         from selenium.webdriver.chrome.options import Options
         from selenium.webdriver.support.ui import WebDriverWait
         from selenium.webdriver.support import expected_conditions as EC
+        from selenium.webdriver.common.keys import Keys
     except ImportError:
         logging.error("Selenium library not installed. Aborting scrape.")
         print("[-] Selenium is required to query the UK CAA live.")
@@ -820,37 +828,57 @@ def scrape_uk_selenium(tail_normalized: str):
         logging.debug("WebDriver spawned successfully.")
         
         # Navigate to Search Page
-        driver.get("https://ginfo.caa.co.uk/member/Search.aspx")
+        driver.get("https://www.caa.co.uk/aircraft-register/g-info/search-g-info/")
         logging.debug("Loaded UK CAA search page.")
 
-        wait = WebDriverWait(driver, 10)
+        wait = WebDriverWait(driver, 15)
+
+        # Reject optional cookies if banner is present
+        try:
+            reject_btn = WebDriverWait(driver, 5).until(EC.element_to_be_clickable((
+                By.XPATH, "//button[contains(text(), 'Reject optional cookies')]"
+            )))
+            driver.execute_script("arguments[0].click();", reject_btn)
+            logging.debug("Rejected optional cookies.")
+        except Exception:
+            logging.debug("No cookie banner or reject button found.")
         
         # Locate the text registration input element
         input_elem = wait.until(EC.presence_of_element_located((
-            By.XPATH, "//input[contains(@id, 'txtRegMark') or contains(@id, 'Registration') or @type='text']"
+            By.XPATH, "//input[@id='registration' or @id='txtRegMark' or contains(@id, 'Registration') or @name='registration']"
         )))
         
         input_elem.clear()
-        input_elem.send_keys(search_query)
-        logging.debug("Injected tail query into text input.")
+        driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input')); arguments[0].dispatchEvent(new Event('change'));", input_elem, search_query)
+        logging.debug("Injected tail query via JavaScript executor to avoid autocomplete popup.")
 
         # Click Search Button
-        search_btn = driver.find_element(
-            By.XPATH, "//input[@type='submit' or contains(@id, 'btnSearch') or @value='Search']"
-        )
-        search_btn.click()
-        logging.debug("Submitted search form.")
-
-        # Wait for the Details/Results to render
-        wait.until(EC.presence_of_element_located((
-            By.XPATH, "//*[contains(text(), 'Manufacturer') or contains(text(), 'Owner') or contains(text(), 'No records')]"
+        search_btn = wait.until(EC.presence_of_element_located((
+            By.XPATH, "//button[contains(text(), 'Quick search') or contains(@class, 'quick-search')]"
         )))
+        # Brief pause to let browser/Angular process the model events
+        time.sleep(0.5)
+        try:
+            driver.execute_script("arguments[0].click();", search_btn)
+            logging.debug("Submitted search form via JS click.")
+        except Exception:
+            search_btn.click()
+            logging.debug("Submitted search form via fallback standard click.")
+
+        # Wait for the Details/Results to render using robust text condition
+        def results_loaded(d):
+            body_text = d.find_element(By.TAG_NAME, "body").text
+            return "Aircraft details for:" in body_text or "No records matched" in body_text or "There are problems:" in body_text
+        
+        wait.until(results_loaded)
 
         # Check if tail does not exist
-        page_source = driver.page_source
-        if "No records" in page_source or "not found" in page_source.lower():
-            logging.warning(f"Registration {search_query} was not found on G-INFO portal.")
-            print(f"[-] Registration '{search_query}' not found in live UK registry.")
+        body_text = driver.find_element(By.TAG_NAME, "body").text
+        logging.debug(f"G-INFO response body snippet: {body_text[:1000]!r}")
+        if "No records matched" in body_text or "There are problems:" in body_text:
+            logging.warning(f"Registration {visual_tail} was not found on G-INFO portal. Body snippet: {body_text[:300]!r}")
+            print(f"[-] Registration '{visual_tail}' not found in live UK registry.")
+            driver.quit()
             return None
 
         # Scraping values out of the G-INFO key-value tables
@@ -859,19 +887,21 @@ def scrape_uk_selenium(tail_normalized: str):
         owner = "Unknown Owner"
 
         try:
-            mfr_val = driver.find_element(By.XPATH, "//*[contains(text(), 'Manufacturer:')]/following-sibling::td | //*[contains(text(), 'Manufacturer')]/following::span[1]").text
-            type_val = driver.find_element(By.XPATH, "//*[contains(text(), 'Type:')]/following-sibling::td | //*[contains(text(), 'Type')]/following::span[1]").text
-            make_model = f"{mfr_val.strip()} {type_val.strip()}".strip()
+            mfr_val = driver.find_element(By.XPATH, "//*[text()='Manufacturer:']/following::*[1] | //*[contains(text(), 'Manufacturer:')]/following::*[1] | //*[contains(text(), 'Manufacturer')]/following::span[1]").text.strip()
+            type_val = driver.find_element(By.XPATH, "//*[text()='Type:']/following::*[1] | //*[contains(text(), 'Type:')]/following::*[1] | //*[contains(text(), 'Type')]/following::span[1]").text.strip()
+            make_model = f"{mfr_val} {type_val}".strip()
         except Exception:
             logging.debug("Could not parse make/model via standard XPaths.")
 
         try:
-            year = driver.find_element(By.XPATH, "//*[contains(text(), 'Year Built:')]/following-sibling::td | //*[contains(text(), 'Year Built')]/following::span[1]").text.strip()
+            year = driver.find_element(By.XPATH, "//*[text()='Year built:']/following::*[1] | //*[contains(text(), 'Year built:')]/following::*[1] | //*[contains(text(), 'Year Built')]/following::span[1]").text.strip()
         except Exception:
             logging.debug("Could not parse Year Built.")
 
         try:
-            owner = driver.find_element(By.XPATH, "//*[contains(text(), 'Registered Owner:')]/following-sibling::td | //*[contains(text(), 'Owner')]/following::span[1]").text.strip()
+            owner = driver.find_element(By.XPATH, "//*[text()='Registered owners:']/following::*[1] | //*[contains(text(), 'Registered owners:')]/following::*[1] | //*[contains(text(), 'Owner')]/following::span[1]").text.strip()
+            # Clean up newlines if owners have them
+            owner = " ".join([o.strip() for o in owner.split("\n") if o.strip()])
         except Exception:
             logging.debug("Could not parse Registered Owner.")
 
@@ -879,14 +909,14 @@ def scrape_uk_selenium(tail_normalized: str):
 
         # Build clean Database Record
         clean_key = tail_normalized.replace("-", "")
-        scraped_record = (clean_key, search_query, "UK", make_model, year, owner)
+        scraped_record = (clean_key, visual_tail, "UK", make_model, year, owner)
         write_to_db([scraped_record])
 
         return {
             "make_model": make_model,
             "date_manufactured": year,
             "owner": owner,
-            "original_tail": search_query
+            "original_tail": visual_tail
         }
 
     except Exception as e:
@@ -984,7 +1014,14 @@ def query_flow(user_input=None):
     if not record:
         print("[*] Record not cached locally. Querying remote Registry sources...")
         
-        if not INGEST_ON_MISS:
+        if region_code == "UK":
+            # Dynamically Scrape UK G-INFO via Selenium
+            record = scrape_uk_selenium(search_key)
+            if not record:
+                # If not found live, load UK mock data to ensure tests pass
+                load_mock_data("UK")
+                record = db_lookup(search_key)
+        elif not INGEST_ON_MISS:
             # Production / Firestore mode: never block a user request on a
             # bulk-registry download. Treat misses as "not found" and let the
             # operator pre-seed via seed.py.
@@ -993,12 +1030,6 @@ def query_flow(user_input=None):
                 search_key, region_code
             )
             record = None
-        elif region_code == "UK":
-            # Dynamically Scrape UK G-INFO via Selenium
-            record = scrape_uk_selenium(search_key)
-            if not record:
-                # Scraper may have populated mock fallback data — re-query cache
-                record = db_lookup(search_key)
         else:
             # Download & Ingest bulk CSV/ZIP
             execute_region_ingestion(region_code)

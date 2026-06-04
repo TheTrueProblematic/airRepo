@@ -44,3 +44,49 @@ C-GMJF       | Canada Dash                  | PASS   | CHALLENGER 604 | BOMBARDI
 D-ATRA       | Unsupported Region (Germany) | PASS   | Gracefully Blocked / Not Su...
 =====================================================================================
 6. Diagnostic Logging & TroubleshootingTwo detailed log files are generated in the application folder:log.log (Engine Logs): Captures SQL transaction entries, URL download progress metrics, XML parser execution traces, and Selenium driver states.test.log (Test Suite Logs): Traces test harness initialization, pre-flight library audits, and test case evaluation metadata.Frequently Asked Issues"Missing import module" on run: Ensure your main aggregator script is named either airRepo.py or aircraft_lookup.py. test.py scans for both names dynamically before aborting.Selenium Scraper fails / falls back: If Google Chrome is missing or Selenium is uninstalled, airRepo.py will catch the error, write standard trace diagnostics to log.log, and gracefully pull fallback mock data into your local database so the test run passes successfully.
+
+7. Agent Mandatory Guidelines (Critical Verification & Deployment)
+All agentic AI models, automated CI runners, and developers MUST strictly adhere to the following workflow before returning or completing any task:
+
+A. PRE-FLIGHT SYSTEM TESTING
+You must verify the integrity of the database normalization, caching, parsing, and scraping algorithms by executing the automated test suite locally inside the `API` directory:
+```bash
+cd API
+python3 test.py
+```
+This test suite performs strict assertions on key registry tails (such as `C-FZRR` verifying Cessna 206H registered to Sky Photo Techniques, and `N91GF` verifying Cessna 172S). 
+- Every single test case MUST output a green `PASS`.
+- If any test fails, do NOT push to cloud or finalize the task. Fix the codebase first.
+
+B. DATABASE RE-SEEDING (IF SCHEMA OR DATA WAS MODIFIED)
+If you made changes affecting database schemas, ingestion logic, or mock fallback registry data, you must re-seed the databases:
+1. Re-seed local SQLite database for local test runs:
+   ```bash
+   python3 seed.py
+   ```
+2. Re-seed the Firestore production instance (if environment demands it):
+   ```bash
+   export AIRREPO_BACKEND=firestore
+   export GOOGLE_CLOUD_PROJECT=airrepo-8e96a
+   python3 seed.py
+   ```
+
+C. FIREBASE & GOOGLE CLOUD DEPLOYMENTS
+Once and ONLY once all tests pass, you must deploy the updates:
+1. Deploy Backend API to Google Cloud Run:
+   ```bash
+   cd API
+   gcloud builds submit --tag us-central1-docker.pkg.dev/airrepo-8e96a/airrepo/api:latest .
+   gcloud run deploy airrepo-api \
+     --image us-central1-docker.pkg.dev/airrepo-8e96a/airrepo/api:latest \
+     --region us-central1 \
+     --platform managed \
+     --allow-unauthenticated \
+     --set-env-vars "GOOGLE_CLOUD_PROJECT=airrepo-8e96a"
+   ```
+2. Deploy React Frontend to Firebase Hosting:
+   ```bash
+   cd ../Web
+   npm run build
+   firebase deploy --only hosting
+   ```

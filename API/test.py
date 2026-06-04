@@ -175,10 +175,47 @@ def run_test_suite():
             else:
                 # We expected actual specs
                 if res and "error" not in res:
-                    details = f"{res.get('make_model', 'Unknown')} | {res.get('owner', 'Unknown')}"
-                    print(f"    -> PASS: Found {res.get('make_model')}")
-                    passed_count += 1
-                    results_summary.append((raw_tail, category, "PASS", details))
+                    make_model = res.get('make_model', '')
+                    owner = res.get('owner', '')
+                    manufactured = res.get('date_manufactured', '')
+                    
+                    # Strict validation for key aircrafts to prevent discrepancies
+                    search_key, _, _, _, _ = engine.normalize_and_classify(raw_tail)
+                    strict_pass = True
+                    strict_error_msg = ""
+                    
+                    if search_key == "FZRR":
+                        # Must be Cessna 206H, 2004, Pat Johnson (Sky Photo Techniques)
+                        if "Cessna" not in make_model or "206H" not in make_model:
+                            strict_pass = False
+                            strict_error_msg = f"Expected Cessna 206H, got: {make_model}"
+                        elif "Sky Photo Techniques" not in owner:
+                            strict_pass = False
+                            strict_error_msg = f"Expected owner containing Sky Photo Techniques, got: {owner}"
+                        elif manufactured != "2004":
+                            strict_pass = False
+                            strict_error_msg = f"Expected year 2004, got: {manufactured}"
+                    elif search_key == "N91GF":
+                        # Must be CESSNA 172S, 2005, SKYHAWK LEASING LLC
+                        if "CESSNA" not in make_model.upper() or "172S" not in make_model.upper():
+                            strict_pass = False
+                            strict_error_msg = f"Expected Cessna 172S, got: {make_model}"
+                        elif "SKYHAWK LEASING" not in owner.upper():
+                            strict_pass = False
+                            strict_error_msg = f"Expected owner containing SKYHAWK LEASING LLC, got: {owner}"
+                        elif manufactured != "2005":
+                            strict_pass = False
+                            strict_error_msg = f"Expected year 2005, got: {manufactured}"
+                    
+                    if strict_pass:
+                        details = f"{make_model} | {owner}"
+                        print(f"    -> PASS: Found {make_model}")
+                        passed_count += 1
+                        results_summary.append((raw_tail, category, "PASS", details))
+                    else:
+                        print(f"    -> FAIL: Strict verification failed: {strict_error_msg}")
+                        failed_count += 1
+                        results_summary.append((raw_tail, category, "FAIL", f"Strict check failed: {strict_error_msg}"))
                 else:
                     err_msg = res.get("error") if res else "No record found"
                     print(f"    -> FAIL: Could not resolve data. Error: {err_msg}")

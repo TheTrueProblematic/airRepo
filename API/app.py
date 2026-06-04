@@ -21,7 +21,7 @@ app = Flask(__name__)
 
 # CORS origins for the frontend(s). Override via AIRREPO_CORS_ORIGINS as a
 # comma-separated list when running behind a different domain.
-_default_origins = "https://airrepo.net,https://www.airrepo.net,http://localhost:5173"
+_default_origins = "https://airrepo.net,https://www.airrepo.net,http://localhost:5173,https://airrepo-8e96a.web.app,https://airrepo-8e96a.firebaseapp.com"
 _origins = [o.strip() for o in os.environ.get("AIRREPO_CORS_ORIGINS", _default_origins).split(",") if o.strip()]
 CORS(app, resources={r"/v1/*": {"origins": _origins}})
 

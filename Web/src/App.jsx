@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-// Configurable at build-time via Vite env. Defaults to the production API.
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://api.airrepo.net';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'https://airrepo-api-856556187815.us-central1.run.app';
 
 const PLACEHOLDER_TAILS = ['N91GF', 'C-GMJF', 'VH-OJA', 'G-INFO', 'EI-LBS', 'ZK-PQR', 'PP-XYZ'];
 
@@ -245,18 +244,6 @@ export default function App() {
     return () => clearInterval(i);
   }, [loading]);
 
-  // "/" focuses the input from anywhere on the page.
-  useEffect(() => {
-    const onKey = e => {
-      if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
-
   async function onSubmit(e) {
     e.preventDefault();
     const q = tail.trim().toUpperCase();
@@ -319,9 +306,6 @@ export default function App() {
           <div className="group relative">
             <div className="absolute -inset-px -z-10 rounded-2xl bg-gradient-to-r from-sky-500/40 via-cyan-400/20 to-indigo-500/40 opacity-40 blur-xl transition group-focus-within:opacity-80" />
             <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-slate-900/70 px-4 py-3 shadow-2xl backdrop-blur sm:px-5 sm:py-4">
-              <span className="hidden h-7 w-7 place-items-center rounded-md border border-white/10 bg-white/5 font-mono text-xs text-slate-400 sm:grid" aria-hidden="true">
-                /
-              </span>
               <input
                 ref={inputRef}
                 type="text"
